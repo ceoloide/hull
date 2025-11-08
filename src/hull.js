@@ -156,8 +156,9 @@ function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
     return convex;
 }
 
-function hull(pointset, concavity, format) {
+function hull(pointset, concavity, format, clockwise) {
     let maxEdgeLen = concavity || 20;
+    clockwise = clockwise || false; // default to anti-clockwise
 
     const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
 
@@ -172,7 +173,7 @@ function hull(pointset, concavity, format) {
         occupiedArea[1] * MAX_SEARCH_BBOX_SIZE_PERCENT
     ];
 
-    const convex = convexHull(points);
+    const convex = convexHull(points, clockwise);
     const innerPoints = points.filter(function(pt) {
         return convex.indexOf(pt) < 0;
     });
