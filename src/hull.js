@@ -158,7 +158,7 @@ function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
 
 function hull(pointset, concavity, format, clockwise) {
     let maxEdgeLen = concavity || 20;
-    clockwise = clockwise || false; // default to anti-clockwise
+    clockwise = clockwise === undefined ? true : clockwise; // default to clockwise
 
     const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
 
