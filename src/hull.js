@@ -90,6 +90,44 @@ function _bBoxAround(edge) {
     ];
 }
 
+function _reverseOrder(pointset) {
+    if (pointset.length === 0) {
+        return pointset;
+    }
+    
+    // Check if the last point equals the first point (closed polygon)
+    const firstPoint = pointset[0];
+    const lastPoint = pointset[pointset.length - 1];
+    
+    // Handle both array format [x, y] and object format {x: ..., y: ...}
+    let isClosed = false;
+    if (Array.isArray(firstPoint)) {
+        isClosed = firstPoint[0] === lastPoint[0] && firstPoint[1] === lastPoint[1];
+    } else {
+        // Object format - compare all properties
+        isClosed = Object.keys(firstPoint).every(key => firstPoint[key] === lastPoint[key]);
+    }
+    
+    if (isClosed && pointset.length > 1) {
+        // Reverse the array but keep the first point at the end
+        const reversed = pointset.slice(0, -1).reverse();
+        // Add the first point (now last) at the end
+        if (Array.isArray(reversed[0])) {
+            reversed.push([reversed[0][0], reversed[0][1]]);
+        } else {
+            const firstReversed = {};
+            Object.keys(reversed[0]).forEach(key => {
+                firstReversed[key] = reversed[0][key];
+            });
+            reversed.push(firstReversed);
+        }
+        return reversed;
+    } else {
+        // Just reverse the array
+        return pointset.slice().reverse();
+    }
+}
+
 function _midPoint(edge, innerPoints, convex) {
     let point = null,
         angle1Cos = MAX_CONCAVE_ANGLE_COS,
@@ -156,14 +194,17 @@ function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
     return convex;
 }
 
-function hull(pointset, concavity, format) {
+function hull(pointset, concavity, format, clockwise) {
     let maxEdgeLen = concavity || 20;
+    // Default to clockwise order (true) for backward compatibility
+    const isClockwise = clockwise !== undefined ? clockwise : true;
 
     const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
 
     if (points.length < 4) {
         const concave = points.concat([points[0]]);
-        return format ? formatUtil.fromXy(concave, format) : concave;
+        const result = format ? formatUtil.fromXy(concave, format) : concave;
+        return isClockwise ? result : _reverseOrder(result);
     }
 
     const occupiedArea = _occupiedArea(points);
@@ -183,7 +224,8 @@ function hull(pointset, concavity, format) {
         convex, Math.pow(maxEdgeLen, 2),
         maxSearchArea, grid(innerPoints, cellSize), new Set());
 
-    return format ? formatUtil.fromXy(concave, format) : concave;
+    const result = format ? formatUtil.fromXy(concave, format) : concave;
+    return isClockwise ? result : _reverseOrder(result);
 }
 
 const MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg

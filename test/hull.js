@@ -44,4 +44,43 @@ module.exports = function() {
         const expected = [[141, 408], [160, 400], [177, 430], [141, 408]];
         assert.deepEqual(hull(points, 50), expected);
     });
+
+    it('should return points in clockwise order by default', function() {
+        const points = [[0, 0], [10, 0], [10, 10], [0, 10]];
+        const clockwiseResult = hull(points, 50);
+        const clockwiseResultExplicit = hull(points, 50, undefined, true);
+        assert.deepEqual(clockwiseResult, clockwiseResultExplicit);
+    });
+
+    it('should return points in anti-clockwise order when clockwise is false', function() {
+        const points = [[0, 0], [10, 0], [10, 10], [0, 10]];
+        const clockwiseResult = hull(points, 50);
+        const antiClockwiseResult = hull(points, 50, undefined, false);
+        
+        // Results should be different (reversed order)
+        assert.notDeepEqual(clockwiseResult, antiClockwiseResult);
+        
+        // Anti-clockwise should be the reverse of clockwise (excluding the duplicate first point)
+        const clockwiseWithoutLast = clockwiseResult.slice(0, -1);
+        const antiClockwiseWithoutLast = antiClockwiseResult.slice(0, -1);
+        const reversedClockwise = clockwiseWithoutLast.slice().reverse();
+        assert.deepEqual(antiClockwiseWithoutLast, reversedClockwise);
+        
+        // Both should have the first point duplicated at the end
+        assert.deepEqual(clockwiseResult[0], clockwiseResult[clockwiseResult.length - 1]);
+        assert.deepEqual(antiClockwiseResult[0], antiClockwiseResult[antiClockwiseResult.length - 1]);
+    });
+
+    it('should work with format parameter and clockwise order', function() {
+        const points = [{lat: 10, lng: 10}, {lat: 100, lng: 10}, {lat: 100, lng: 100}];
+        const clockwiseResult = hull(points, 10, ['.lng', '.lat'], true);
+        const antiClockwiseResult = hull(points, 10, ['.lng', '.lat'], false);
+        
+        // Results should be different
+        assert.notDeepEqual(clockwiseResult, antiClockwiseResult);
+        
+        // Both should have the first point duplicated at the end
+        assert.deepEqual(clockwiseResult[0], clockwiseResult[clockwiseResult.length - 1]);
+        assert.deepEqual(antiClockwiseResult[0], antiClockwiseResult[antiClockwiseResult.length - 1]);
+    });
 }
