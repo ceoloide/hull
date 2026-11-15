@@ -15,6 +15,13 @@ Params:
 * 1st param - array of coordinates in format: `[[x1, y1], [x2, y2], ..., [xn, yn]]`.
 * 2nd param - concavity. `1` - thin shape. `Infinity` - convex hull. By default `20`.
 * 3rd param - points format. For example: `['.lng', '.lat']` if you have `{lng: x, lat: y}` points. By default you can use `[x, y]` points.
+* 4th param - options:
+  * `symmetric` - build the hull from the geometry only, independent of point order and of the orientation of the axes, so a point set symmetric about any line yields a hull symmetric about it. By default `false`.
+  * `tolerance` - with `symmetric`, a finite positive number in the units of the points; anything else throws a `RangeError`. Groups of points within this distance of each other merge into the center of their smallest enclosing circle when it fits within this radius, points this close to exactly one convex hull edge become vertices, and edges this close count as touching. Every input point ends up inside the hull or within this distance of it. By default `1e-5`.
+
+With `symmetric`, an empty set returns `[]`, fewer than four points left after merging come back sorted by X and closed like the default mode, and points collinear within `tolerance` return a closed line through the two end points (the convex outline is kept when the two end points are ambiguous, as in a square smaller than `tolerance`). Symmetry is guaranteed for inputs that are symmetric up to float rounding; points that miss their mirror image by more than that can still give an asymmetric hull. Keep `tolerance` well below the smallest real spacing in the design: when spacings fall right at a tolerance-based threshold (for example a 0.05 grid with `tolerance: 0.1`), float noise can still decide differently for the two halves, and moving the tolerance slightly away from such a value avoids it.
+
+	hull(points, 50, undefined, { symmetric: true });
 
 ## NPM package
 

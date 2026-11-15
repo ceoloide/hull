@@ -6,6 +6,7 @@ const intersect = require('robust-segment-intersect');
 const grid = require('./grid.js');
 const formatUtil = require('./format.js');
 const convexHull = require('monotone-convex-hull-2d');
+const symmetricHull = require('./symmetric.js');
 
 function _filterDuplicates(pointset) {
     const unique = [pointset[0]];
@@ -156,8 +157,17 @@ function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
     return convex;
 }
 
-function hull(pointset, concavity, format) {
+function hull(pointset, concavity, format, options) {
     let maxEdgeLen = concavity || 20;
+
+    if (options && options.symmetric) {
+        const tolerance = options.tolerance === undefined ? DEFAULT_TOLERANCE : options.tolerance;
+        if (typeof tolerance !== 'number' || !isFinite(tolerance) || tolerance <= 0) {
+            throw new RangeError('hull: tolerance must be a finite positive number');
+        }
+        const concave = symmetricHull(formatUtil.toXy(pointset, format), maxEdgeLen, tolerance);
+        return format ? formatUtil.fromXy(concave, format) : concave;
+    }
 
     const points = _filterDuplicates(_sortByX(formatUtil.toXy(pointset, format)));
 
@@ -190,5 +200,6 @@ function hull(pointset, concavity, format) {
 
 const MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
 const MAX_SEARCH_BBOX_SIZE_PERCENT = 0.6;
+const DEFAULT_TOLERANCE = 1e-5;
 
 module.exports = hull;
