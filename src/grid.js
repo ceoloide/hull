@@ -33,9 +33,10 @@ Grid.prototype = {
 
         for (let x = tlCellX; x <= brCellX; x++) {
             for (let y = tlCellY; y <= brCellY; y++) {
+                const cell = this.cellPoints(x, y);
                 // replaced Array.prototype.push.apply to avoid hitting stack size limit on larger arrays.
-                for (let i = 0; i < this.cellPoints(x, y).length; i++) {
-                    points.push(this.cellPoints(x, y)[i]);
+                for (let i = 0; i < cell.length; i++) {
+                    points.push(cell[i]);
                 }
             }
         }
