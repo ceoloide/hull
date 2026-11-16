@@ -103,6 +103,12 @@ function _bBoxesOverlap(a, b) {
     return a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
 }
 
+// Same as _bBoxesOverlap(box, _bBox([a, b], 0)), without building a box.
+function _segmentBoxOverlap(a, b, box) {
+    return box[0] <= Math.max(a[0], b[0]) && Math.min(a[0], b[0]) <= box[2] &&
+        box[1] <= Math.max(a[1], b[1]) && Math.min(a[1], b[1]) <= box[3];
+}
+
 // First index in an x-sorted pointset whose x is >= x.
 function _lowerBound(pointset, x) {
     let lo = 0, hi = pointset.length;
@@ -286,9 +292,8 @@ function _diameterAmbiguous(points, ends, tol) {
 // inside. Taking both keeps the vertices symmetric. Points near two edges,
 // too close along an edge to order reliably, or whose edge would then leave
 // an input point outside, are left inside. points must not be collinear.
-function _convex(points, originals, tol) {
-    const hull = convexHull(points).map(function(idx) { return points[idx]; });
-
+// hull is the convex hull of points, as convexHull gives it.
+function _convex(points, originals, tol, hull) {
     const onHull = new Set(hull);
     const near = new Map(); // point -> edges within tol
     hull.forEach(function(a, i) {
@@ -348,7 +353,7 @@ function _chainFree(chain, ring, tol) {
         const c = ring[i],
             d = ring[(i + 1) % ring.length];
         if ((c === e0 && d === e1) || (c === e1 && d === e0) ||
-            !_bBoxesOverlap(box, _bBox([c, d], 0))) {
+            !_segmentBoxOverlap(c, d, box)) {
             continue;
         }
         for (let k = 0; k < chain.length - 1; k++) {
@@ -472,15 +477,27 @@ function _concave(points, originals, ring, maxEdgeLen, tol) {
     const bestCandidates = function(e0, e1, radius) {
         const off = banned.get(edgeKey(e0, e1));
         const candidates = [];
-        _inBox(inner, _bBox([e0, e1], radius)).forEach(function(p) {
-            if ((off && off.has(p)) || _pointSegDist(p, e0, e1) > radius) {
-                return;
+        const box = _bBox([e0, e1], radius);
+        for (let i = _lowerBound(inner, box[0]); i < inner.length && inner[i][0] <= box[2]; i++) {
+            const p = inner[i];
+            // same test as _inBox
+            if (!(p[1] >= box[1] && p[1] <= box[3]) || (off && off.has(p))) {
+                continue;
             }
-            const a0 = _angle(e0, e1, p), a1 = _angle(e1, e0, p);
-            if (a0 < MAX_ANGLE && a1 < MAX_ANGLE) {
-                candidates.push({point: p, score: [-Math.max(a0, a1), -(a0 + a1)]});
+            // _angle passes this same dot product to atan2: when it is
+            // negative (not -0), the angle is at least 90 degrees and fails
+            // MAX_ANGLE below, whatever the cross product, even NaN.
+            if (_dot(e0, e1, p) < 0 || _dot(e1, e0, p) < 0 || _pointSegDist(p, e0, e1) > radius) {
+                continue;
             }
-        });
+            const a0 = _angle(e0, e1, p);
+            if (a0 < MAX_ANGLE) {
+                const a1 = _angle(e1, e0, p);
+                if (a1 < MAX_ANGLE) {
+                    candidates.push({point: p, score: [-Math.max(a0, a1), -(a0 + a1)]});
+                }
+            }
+        }
         candidates.sort(function(a, b) { return b.score[0] - a.score[0]; });
 
         // walk down from the best primary score, keeping free candidates
@@ -642,7 +659,7 @@ function symmetricHull(points, maxEdgeLen, tol) {
         return ends.concat([ends[0]]);
     }
 
-    const ring = _concave(merged, originals, _convex(merged, originals, tol), maxEdgeLen, tol).reverse();
+    const ring = _concave(merged, originals, _convex(merged, originals, tol, hull), maxEdgeLen, tol).reverse();
     return ring.concat([ring[0]]);
 }
 
