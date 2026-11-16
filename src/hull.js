@@ -32,23 +32,47 @@ function _sqLength(a, b) {
 }
 
 function _cos(o, a, b) {
-    const aShifted = [a[0] - o[0], a[1] - o[1]],
-        bShifted = [b[0] - o[0], b[1] - o[1]],
-        sqALen = _sqLength(o, a),
-        sqBLen = _sqLength(o, b),
-        dot = aShifted[0] * bShifted[0] + aShifted[1] * bShifted[1];
+    const ax = a[0] - o[0], ay = a[1] - o[1],
+        bx = b[0] - o[0], by = b[1] - o[1],
+        sqALen = Math.pow(ax, 2) + Math.pow(ay, 2),
+        sqBLen = Math.pow(bx, 2) + Math.pow(by, 2),
+        dot = ax * bx + ay * by;
 
     return dot / Math.sqrt(sqALen * sqBLen);
 }
 
-function _intersect(segment, pointset) {
+// Exact segment tests never report segments whose bounding boxes are apart
+// as intersecting, so those can be skipped. robust-segment-intersect is exact
+// unless its arithmetic overflows or underflows, which it cannot when every
+// coordinate is a number, 0 or of magnitude 2^-100 to 2^100. Otherwise (NaN,
+// infinite, huge or tiny coordinates) its answers stand as they are.
+function _boxTestSafe(pointset) {
+    for (let i = 0; i < pointset.length; i++) {
+        for (let k = 0; k < 2; k++) {
+            const v = pointset[i][k];
+            if (typeof v !== 'number' || v !== 0 && !(Math.abs(v) >= EXACT_MIN && Math.abs(v) <= EXACT_MAX)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Does segment a-b intersect the polyline pointset? Segments of the polyline
+// that share a's position are ignored.
+function _intersect(a, b, pointset, boxTest) {
+    const minX = Math.min(a[0], b[0]), maxX = Math.max(a[0], b[0]),
+        minY = Math.min(a[1], b[1]), maxY = Math.max(a[1], b[1]);
     for (let i = 0; i < pointset.length - 1; i++) {
-        const seg = [pointset[i], pointset[i + 1]];
-        if (segment[0][0] === seg[0][0] && segment[0][1] === seg[0][1] ||
-            segment[0][0] === seg[1][0] && segment[0][1] === seg[1][1]) {
+        const c = pointset[i], d = pointset[i + 1];
+        if (a[0] === c[0] && a[1] === c[1] || a[0] === d[0] && a[1] === d[1]) {
             continue;
         }
-        if (intersect(segment[0], segment[1], seg[0], seg[1])) {
+        if (boxTest && (c[0] < minX && d[0] < minX || c[0] > maxX && d[0] > maxX ||
+            c[1] < minY && d[1] < minY || c[1] > maxY && d[1] > maxY)) {
+            continue;
+        }
+        if (intersect(a, b, c, d)) {
             return true;
         }
     }
@@ -91,7 +115,7 @@ function _bBoxAround(edge) {
     ];
 }
 
-function _midPoint(edge, innerPoints, convex) {
+function _midPoint(edge, innerPoints, convex, boxTest) {
     let point = null,
         angle1Cos = MAX_CONCAVE_ANGLE_COS,
         angle2Cos = MAX_CONCAVE_ANGLE_COS,
@@ -102,8 +126,8 @@ function _midPoint(edge, innerPoints, convex) {
         a2Cos = _cos(edge[1], edge[0], innerPoints[i]);
 
         if (a1Cos > angle1Cos && a2Cos > angle2Cos &&
-            !_intersect([edge[0], innerPoints[i]], convex) &&
-            !_intersect([edge[1], innerPoints[i]], convex)) {
+            !_intersect(edge[0], innerPoints[i], convex, boxTest) &&
+            !_intersect(edge[1], innerPoints[i], convex, boxTest)) {
 
             angle1Cos = a1Cos;
             angle2Cos = a2Cos;
@@ -114,16 +138,16 @@ function _midPoint(edge, innerPoints, convex) {
     return point;
 }
 
-function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
+function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList, boxTest) {
     let midPointInserted = false;
 
     for (let i = 0; i < convex.length - 1; i++) {
         const edge = [convex[i], convex[i + 1]];
+        if (_sqLength(edge[0], edge[1]) < maxSqEdgeLen) { continue; }
+
         // generate a key in the format X0,Y0,X1,Y1
         const keyInSkipList = edge[0][0] + ',' + edge[0][1] + ',' + edge[1][0] + ',' + edge[1][1];
-
-        if (_sqLength(edge[0], edge[1]) < maxSqEdgeLen ||
-            edgeSkipList.has(keyInSkipList)) { continue; }
+        if (edgeSkipList.has(keyInSkipList)) { continue; }
 
         let scaleFactor = 0;
         let bBoxAround = _bBoxAround(edge);
@@ -135,7 +159,7 @@ function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
             bBoxWidth = bBoxAround[2] - bBoxAround[0];
             bBoxHeight = bBoxAround[3] - bBoxAround[1];
 
-            midPoint = _midPoint(edge, grid.rangePoints(bBoxAround), convex);
+            midPoint = _midPoint(edge, grid.rangePoints(bBoxAround), convex, boxTest);
             scaleFactor++;
         }  while (midPoint === null && (maxSearchArea[0] > bBoxWidth || maxSearchArea[1] > bBoxHeight));
 
@@ -151,7 +175,7 @@ function _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList) {
     }
 
     if (midPointInserted) {
-        return _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList);
+        return _concave(convex, maxSqEdgeLen, maxSearchArea, grid, edgeSkipList, boxTest);
     }
 
     return convex;
@@ -193,7 +217,7 @@ function hull(pointset, concavity, format, options) {
 
     const concave = _concave(
         convex, Math.pow(maxEdgeLen, 2),
-        maxSearchArea, grid(innerPoints, cellSize), new Set());
+        maxSearchArea, grid(innerPoints, cellSize), new Set(), _boxTestSafe(points));
 
     return format ? formatUtil.fromXy(concave, format) : concave;
 }
@@ -201,5 +225,7 @@ function hull(pointset, concavity, format, options) {
 const MAX_CONCAVE_ANGLE_COS = Math.cos(90 / (180 / Math.PI)); // angle = 90 deg
 const MAX_SEARCH_BBOX_SIZE_PERCENT = 0.6;
 const DEFAULT_TOLERANCE = 1e-5;
+const EXACT_MIN = Math.pow(2, -100);
+const EXACT_MAX = Math.pow(2, 100);
 
 module.exports = hull;
